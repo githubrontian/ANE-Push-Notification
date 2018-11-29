@@ -70,6 +70,23 @@ package com.freshplanet.ane.AirPushNotification {
 		}
 
 		/**
+		 * Check if notificationChannel is enabled in Android notification settings
+		 * @param channelId
+		 * @return
+		 */
+		public function isNotificationChannelEnabled(channelId:String):Boolean {
+
+			if (!isSupported)
+				return false;
+
+			if(_isIOS())
+				return true;
+
+
+			return _context.call("checkNotificationChannelEnabled", channelId);
+		}
+
+		/**
 		 * return true if OS permits sending user to settings (iOS 8, Android
 		 */
 		public function get canSendUserToSettings():Boolean {
@@ -83,21 +100,30 @@ package com.freshplanet.ane.AirPushNotification {
         /**
          *
          */
-		public function openDeviceNotificationSettings():void {
+		public function openDeviceNotificationSettings(channelId:String = null):void {
+
+			if(!channelId)
+				channelId = "";
 
 			if (isSupported)
-                _context.call("openDeviceNotificationSettings");
+                _context.call("openDeviceNotificationSettings", channelId);
 		}
 
         /**
 		 * Needs Project id for Android Notifications.
 		 * The project id is the one the developer used to register to gcm.
 		 * @param projectId: project id to use
+		 * @param iOSNotificationCategories: notification categories used on iOS (PushNotificationCategoryiOS)
 		 */
-		public function registerForPushNotification(projectId:String = null):void {
+		public function registerForPushNotification(projectId:String = null, iOSNotificationCategories:Array = null):void {
 
-			if (isSupported)
+			if(!isSupported)
+				return;
+
+			if (_isAndroid())
                 _context.call("registerPush", projectId);
+			else if(_isIOS())
+				_context.call("registerPush", iOSNotificationCategories != null ? JSON.stringify(iOSNotificationCategories) : null);
 		}
 
         /**
@@ -120,6 +146,7 @@ package com.freshplanet.ane.AirPushNotification {
          * @param deepLinkPath
          * @param iconPath
          * @param groupId  used to group notifications together
+         * @param categoryId  used to display custom summaries on iOS
 		 */
 		public function sendLocalNotification(message:String,
                                               timestamp:int,
@@ -128,7 +155,9 @@ package com.freshplanet.ane.AirPushNotification {
 											  notificationId:int = DEFAULT_LOCAL_NOTIFICATION_ID,
                                               deepLinkPath:String = null,
                                               iconPath:String = null,
-                                              groupId:String = null):void {
+                                              groupId:String = null,
+											  categoryId:String = null
+		):void {
 
 			if (!isSupported)
 				return;
@@ -142,7 +171,10 @@ package com.freshplanet.ane.AirPushNotification {
 			if(!groupId)
 				groupId = "";
 
-			_context.call("sendLocalNotification", message, timestamp, title, recurrenceType, notificationId, deepLinkPath, iconPath, groupId);
+			if(!categoryId)
+				categoryId = "";
+
+			_context.call("sendLocalNotification", message, timestamp, title, recurrenceType, notificationId, deepLinkPath, iconPath, groupId, categoryId);
 
 		}
 
@@ -193,6 +225,14 @@ package com.freshplanet.ane.AirPushNotification {
 			}
 		}
 
+		public function checkAppNotificationSettingsRequest():void {
+
+			if (_isIOS()) {
+				_context.call("checkAppNotificationSettingsRequest");
+			}
+		}
+
+
 
         public function storeTrackingNotifUrl(url:String):void {
 
@@ -200,7 +240,24 @@ package com.freshplanet.ane.AirPushNotification {
                 _context.call("storeNotifTrackingInfo", url);
         }
 
-        // --------------------------------------------------------------------------------------//
+		/**
+		 * Create Android notification channel
+		 * @param channelId
+		 * @param channelName
+		 * @param importance
+		 * @param enableLights
+		 * @param enableVibration
+		 */
+		public function createAndroidNotificationChannel(channelId:String, channelName:String, importance:int, enableLights:Boolean, enableVibration:Boolean):void {
+
+			if (_isAndroid())
+				_context.call("createNotificationChannel", channelId, channelName, importance, enableLights, enableVibration);
+		}
+
+
+
+
+		// --------------------------------------------------------------------------------------//
         //																						 //
         // 									 	PRIVATE API										 //
         // 																						 //
@@ -362,6 +419,10 @@ package com.freshplanet.ane.AirPushNotification {
                 case "NOTIFICATION_SETTINGS_DISABLED":
                     event = new PushNotificationEvent(PushNotificationEvent.NOTIFICATION_SETTINGS_DISABLED);
                     break;
+
+				case "OPEN_APP_NOTIFICATION_SETTINGS":
+					event = new PushNotificationEvent(PushNotificationEvent.OPEN_APP_NOTIFICATION_SETTINGS);
+					break;
 
                 case "LOGGING":
                     trace(e, e.level);

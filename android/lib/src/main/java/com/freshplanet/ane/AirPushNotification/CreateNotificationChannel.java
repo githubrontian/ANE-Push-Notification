@@ -15,8 +15,11 @@
 package com.freshplanet.ane.AirPushNotification;
 
 import android.app.Activity;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.Build;
 
 import com.adobe.fre.FREContext;
 import com.adobe.fre.FREFunction;
@@ -25,42 +28,52 @@ import com.adobe.fre.FREObject;
 import com.adobe.fre.FRETypeMismatchException;
 import com.adobe.fre.FREWrongThreadException;
 
-public class StoreNotifTrackingInfo implements FREFunction {
+public class CreateNotificationChannel implements FREFunction {
 
 	@Override
 	public FREObject call(FREContext arg0, FREObject[] arg1) {
 		
 		Extension.log("start storing notif tracking");
 
-		if (arg1.length > 0)
-		{
-			String url = null;
-			try {
-				url = arg1[0].getAsString();
-			} catch (IllegalStateException e) {
-				e.printStackTrace();
-			} catch (FRETypeMismatchException e) {
-				e.printStackTrace();
-			} catch (FREInvalidObjectException e) {
-				e.printStackTrace();
-			} catch (FREWrongThreadException e) {
-				e.printStackTrace();
-			} catch (Exception e) {
-				e.printStackTrace();
+
+
+
+		try {
+
+			String channelId = arg1[0].getAsString();
+			String channelName = arg1[1].getAsString();
+			int importance = arg1[2].getAsInt();
+			boolean enableLights = arg1[3].getAsBool();
+			boolean enableVibration = arg1[4].getAsBool();
+
+			if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.O){
+				Context appContext = arg0.getActivity().getApplicationContext();
+				NotificationManager notifManager = (NotificationManager)appContext.getSystemService(Context.NOTIFICATION_SERVICE);
+				NotificationChannel notificationChannel = new NotificationChannel(channelId, channelName ,importance);
+				notificationChannel.enableLights(enableLights);
+				notificationChannel.enableVibration(enableVibration);
+				notifManager.createNotificationChannel(notificationChannel);
 			}
-			
-			if (url != null) {
-				storeUrl(arg0.getActivity(), url);
-			} else
-			{
-				Extension.log("url tracking is null");
+			else {
+				Extension.log("Notification channels available only on Android API >= 26");
 			}
-			
-		} else
-		{
-			Extension.log("no arguments providing to store tracking url");
+
+		} catch (IllegalStateException e) {
+			e.printStackTrace();
+		} catch (FRETypeMismatchException e) {
+			e.printStackTrace();
+		} catch (FREInvalidObjectException e) {
+			e.printStackTrace();
+		} catch (FREWrongThreadException e) {
+			e.printStackTrace();
+		} catch (NullPointerException e) {
+			e.printStackTrace();
+		} catch (Exception e) {
+			e.printStackTrace();
 		}
-		
+
+
+
 		return null;
 	}
 

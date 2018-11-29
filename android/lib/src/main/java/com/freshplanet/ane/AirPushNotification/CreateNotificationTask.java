@@ -43,15 +43,15 @@ import android.media.RingtoneManager;
 import android.net.Uri;
 import android.os.AsyncTask;
 import android.os.Build;
+import android.service.notification.StatusBarNotification;
 import android.support.v4.app.NotificationCompat;
-import android.support.v4.app.NotificationManagerCompat;
+import android.util.Log;
 
 import com.distriqt.extension.util.Resources;
 
 public class CreateNotificationTask extends AsyncTask<Void, Void, Boolean>
 {
-	private static int NOTIFICATION_ID = 1;
-	
+
 	private Context _context;
 	private Intent _intent;
 	private Bitmap _picture;
@@ -155,18 +155,43 @@ public class CreateNotificationTask extends AsyncTask<Void, Void, Boolean>
 			Extension.log("Couldn't create push notification: _context or _intent was null (CreateNotificationTask.onPostExecute)");
 			return;
 		}
+
+
 		
 		// Notification texts
 		CharSequence contentTitle = _intent.getStringExtra("contentTitle");
-		if (contentTitle.length() > 22)
-		{
-			contentTitle = contentTitle.subSequence(0, 20) + "...";
-		}
 		CharSequence contentText = _intent.getStringExtra("contentText");
 		CharSequence tickerText = _intent.getStringExtra("tickerText");
-		
+
 		String largeIconResourceId = _intent.getStringExtra("largeIconResourceId");
-		
+		String groupId = _intent.getStringExtra("groupId");
+		if(groupId != null && groupId.equals("")) {
+			groupId = null;
+		}
+
+		String categoryId = _intent.getStringExtra("android_channel_id");
+		if(categoryId == null || categoryId.equals("")) {
+			try{
+				categoryId = _context.getString(Resources.getResourseIdByName(_context.getPackageName(), "string", "notification_channel_id_default"));
+			}
+			catch (Exception e) {
+				Log.d("AirPushNotification", "Unable to retrieve default category id");
+			}
+
+		}
+
+		String categoryName = null;
+
+		if(categoryId != null) {
+			try {
+				int categoryNameResourceId = Resources.getResourseIdByName(_context.getPackageName(), "string", "notification_channel_name_" + categoryId);
+				categoryName = _context.getString(categoryNameResourceId);
+			}
+			catch (Exception e) {
+				Log.d("AirPushNotification", "Unable to retrieve category name");
+			}
+		}
+
 		// Notification images
 		int smallIconId = Resources.getResourseIdByName(_context.getPackageName(), "drawable", "status_icon");
 		int largeIconId = Resources.getResourseIdByName(_context.getPackageName(), "drawable", "app_icon");
@@ -174,7 +199,7 @@ public class CreateNotificationTask extends AsyncTask<Void, Void, Boolean>
 		{
 			largeIconId = Resources.getResourseIdByName(_context.getPackageName(), "drawable", largeIconResourceId);
 		}
-		
+
 		Bitmap largeIcon;
 		if (downloadSuccess)
 		{
@@ -184,17 +209,17 @@ public class CreateNotificationTask extends AsyncTask<Void, Void, Boolean>
 		{
 			largeIcon = BitmapFactory.decodeResource(_context.getResources(), largeIconId);
 		}
-		
+
 		// rounded picture for lollipop
 		if (largeIcon != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP)
 		{
 			largeIcon = getCircleBitmap(largeIcon);
 		}
-		
+
 		// Notification sound
 		Uri soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION);
-		
-		// Notification action
+
+
 		Intent notificationIntent = new Intent(_context, NotificationActivity.class);;
 		notificationIntent.putExtra("params", Extension.getParametersFromIntent(_intent));
 		PendingIntent contentIntent = PendingIntent.getActivity(_context, 0, notificationIntent, PendingIntent.FLAG_UPDATE_CURRENT);
@@ -203,18 +228,33 @@ public class CreateNotificationTask extends AsyncTask<Void, Void, Boolean>
 		NotificationManager notifManager = (NotificationManager)_context.getSystemService(Context.NOTIFICATION_SERVICE);
 		NotificationCompat.Builder builder;
 
-		if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.O){
+		if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && categoryId != null && categoryName != null){
 			int importance = NotificationManager.IMPORTANCE_HIGH;
-			NotificationChannel notificationChannel = new NotificationChannel("sp2-channel", "songpop2" ,importance);
+			NotificationChannel notificationChannel = new NotificationChannel(categoryId, categoryName ,importance);
 			notificationChannel.enableLights(true);
 			notificationChannel.enableVibration(true);
 			notifManager.createNotificationChannel(notificationChannel);
-			builder = new NotificationCompat.Builder(_context, "sp2-channel");
+
+			builder = new NotificationCompat.Builder(_context, categoryId);
 		}
 		else {
 			builder = new NotificationCompat.Builder(_context);
 		}
 
+		NotificationCompat.InboxStyle inbox;
+		CharSequence summaryArg = _intent.getStringExtra("summaryArg");
+		String summaryText = null;
+		int summaryId = -1;
+		if(categoryId != null) {
+			try{
+				summaryId = Resources.getResourseIdByName(_context.getPackageName(), "plurals", categoryId);
+			}
+			catch (Exception e) {
+				Log.d("AirPushNotification", "Unable to retrieve summary text");
+			}
+
+		}
+		
 		// Create notification
 		builder.setContentTitle(contentTitle)
 				.setContentText(contentText)
@@ -225,20 +265,66 @@ public class CreateNotificationTask extends AsyncTask<Void, Void, Boolean>
 				.setWhen(System.currentTimeMillis())
 				.setAutoCancel(true)
 				.setColor(0xFF2DA9F9)
-				.setContentIntent(contentIntent);
+				.setGroup(groupId)
+				.setContentIntent(contentIntent)
+				.setGroupSummary(false);
+
+
+		int notificationId = Extension.getNotificationID(_context);
 
 		Notification notification = builder.build();
-		notifManager.notify(NOTIFICATION_ID, notification);
-		NOTIFICATION_ID++;
+		notifManager.notify(notificationId, notification);
+
+
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && groupId != null) {
+
+			int numNotifs = 0;
+			for (StatusBarNotification sbn : notifManager.getActiveNotifications()) {
+				// and exclude any previously sent stack notifications
+				if (groupId.equals(sbn.getNotification().getGroup()) && !Extension.isSummaryID(_context, groupId, sbn.getId())) {
+					numNotifs++;
+				}
+			}
+
+			inbox = new NotificationCompat.InboxStyle();
+			try {
+				if(summaryId >= 0) {
+					summaryText = _context.getResources().getQuantityString(summaryId, numNotifs, numNotifs, summaryArg);
+					inbox.setSummaryText(summaryText);
+				}
+			}
+			catch (Exception e) {
+				Log.d("AirPushNotification", "Unable to retrieve summary text");
+			}
+
+
+			builder = new NotificationCompat.Builder(_context, categoryId);
+			builder.setContentTitle(contentTitle);
+			builder.setContentText(contentText);
+			builder
+					.setStyle(inbox)
+					.setSmallIcon(smallIconId)
+					.setLargeIcon(largeIcon)
+					.setSound(soundUri)
+					.setWhen(System.currentTimeMillis())
+					.setAutoCancel(true)
+					.setColor(0xFF2DA9F9)
+					.setGroup(groupId)
+					.setGroupSummary(true);
+
+			notifManager.notify(Extension.getSummaryID(_context, groupId), builder.build());
+
+		}
 
 		trackNotification();
+
 	}
-	
+
 	private void trackNotification()
 	{
 
 		// retrieve stored url
-		SharedPreferences settings = _context.getSharedPreferences(Extension.PREFS_NAME, 0);
+		SharedPreferences settings = _context.getSharedPreferences(Extension.PREFS_NAME, Context.MODE_PRIVATE);
 		String trackingUrl = settings.getString(Extension.PREFS_KEY, null);
 		if (trackingUrl != null)
 		{

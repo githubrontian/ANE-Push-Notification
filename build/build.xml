@@ -36,6 +36,29 @@
             <arg line="SYMROOT=$(PWD)/../ios/build"/>
         </exec>
 
+        <if>
+            <equals arg1="${include.res}" arg2="true"/>
+            <then>
+
+                <echo message="copying resources"/>
+
+                <if>
+                    <available file="${ios.res}" type="dir" />
+                    <then>
+                        <echo message="copying files from ${ios.res}" />
+                    </then>
+                    <else>
+                        <fail message="Directory ${ios.res} does not exist" />
+                    </else>
+                </if>
+
+                <!-- copy over additional assets -->
+                <copy todir="temp/ios/" overwrite="true" failonerror="true">
+                    <fileset dir="${ios.res}"/>
+                </copy>
+            </then>
+        </if>
+
         <!-- copy the ios lib to the base temp ios directory -->
         <copy todir="temp/ios" overwrite="true" includeEmptyDirs="false" flatten="true">
             <fileset dir="../ios/build/Release-iphoneos" includes="**/*.a" excludes="*Pods-${name}*"/>
@@ -79,26 +102,7 @@
 
         <!-- get the jar -->
         <copy file="${build.release}/classes.jar" tofile="temp/android/lib${name}.jar"/>
-
-        <!-- in a condition so assets can be included in another ANE also using default res directory -->
-        <if>
-        	<equals arg1="${include.res}" arg2="true"/>
-        	<then>
-
-        		<echo message="copying resources"/>
-
-		        <!-- Copy over required resources -->
-		        <copy todir="temp/android/res" failonerror="false">
-		            <fileset dir="${build.intermediates}/res/merged/release"/>
-		        </copy>
-
-		        <!-- copy over additional assets -->
-		        <copy todir="temp/android/res/" overwrite="true" failonerror="false">
-					<fileset dir="${android.res}"/>
-				</copy>
-        	</then>
-        </if>
-
+        
         <!-- Copy dependencies into temp folder -->
         <exec executable="./gradlew" dir="../android">
             <env key="JAVA_HOME" path="${java.home}"/>
